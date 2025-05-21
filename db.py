@@ -585,3 +585,35 @@ async def get_application_media_by_category(application_id: int, category: str):
     except Exception as e:
         logger.error(f"Ошибка при получении медиа категории {category} для заявки #{application_id}: {e}")
         return []
+
+async def execute_whitelist_command(nickname: str, platform: str):
+    """
+    Выполняет команду whitelist/fwhitelist через screen
+    
+    :param nickname: Никнейм игрока
+    :param platform: Платформа (java/bedrock)
+    """
+    import subprocess
+    
+    try:
+        if platform == "java":
+            command = f"screen -DD -RR server -X stuff 'whitelist add {nickname}\n'"
+        elif platform == "bedrock":
+            command = f"screen -DD -RR server -X stuff 'fwhitelist add {nickname}\n'"
+        else:
+            logger.error(f"Неизвестная платформа для whitelist: {platform}")
+            return False
+        
+        # Выполняем команду
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            logger.info(f"Успешно выполнена команда whitelist для {nickname} ({platform})")
+            return True
+        else:
+            logger.error(f"Ошибка выполнения команды whitelist: {result.stderr}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Ошибка при выполнении команды whitelist: {e}")
+        return False
