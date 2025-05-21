@@ -1,2 +1,2 @@
 # HorniMineBot
-Это код бота сервера HorniMine.fun
+Это код бота сервера https://HorniMine.fun
