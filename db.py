@@ -586,6 +586,28 @@ async def get_application_media_by_category(application_id: int, category: str):
         logger.error(f"Ошибка при получении медиа категории {category} для заявки #{application_id}: {e}")
         return []
 
+async def get_full_application_data(application_id: int):
+    """Получает все данные заявки для отображения админам"""
+    try:
+        async with aiosqlite.connect('data/bot.db') as db:
+            async with db.execute('''
+                SELECT 
+                    a.application_id, a.user_id, a.status, a.description, a.comment, a.created_at, a.edit_count,
+                    a.player_name, a.player_age, a.player_about, a.player_plans, a.player_community,
+                    a.player_platform, a.player_nickname_java, a.player_nickname_bedrock, a.player_referral,
+                    u.username
+                FROM applications a
+                JOIN users u ON a.user_id = u.user_id
+                WHERE a.application_id = ?
+            ''', (application_id,)) as cursor:
+                application = await cursor.fetchone()
+                if not application:
+                    logger.warning(f"Заявка #{application_id} не найдена")
+                return application
+    except Exception as e:
+        logger.error(f"Ошибка при получении полных данных заявки #{application_id}: {e}")
+        return None
+
 async def execute_whitelist_command(nickname: str, platform: str):
     """
     Выполняет команду whitelist/fwhitelist через screen
@@ -617,3 +639,26 @@ async def execute_whitelist_command(nickname: str, platform: str):
     except Exception as e:
         logger.error(f"Ошибка при выполнении команды whitelist: {e}")
         return False
+
+async def save_players_to_file(application_id: int):
+    """
+    Сохраняет никнеймы игроков в файл data/players.txt в формате:
+    username,platform,nickname_java,nickname_bedrock
+    """
+    try:
+        async with aiosqlite.connect('data/bot.db') as db:
+            async with db.execute('''
+                SELECT u.username, a.player_platform, a.player_nickname_java, a.player_nickname_bedrock
+                FROM applications a
+                JOIN users u ON a.user_id = u.user_id
+                WHERE a.application_id = ?
+            ''', (application_id,)) as cursor:
+                player_data = await cursor.fetchone()
+                
+                if player_data:
+                    username, platform, nickname_java, nickname_bedrock = player_data
+                    with open('data/players.txt', 'a', encoding='utf-8') as f:
+                        f.write(f"{username},{platform},{nickname_java or ''},{nickname_bedrock or ''}\n")
+                    logger.info(f"Никнеймы игрока {username} сохранены в файл")
+    except Exception as e:
+        logger.error(f"Ошибка при сохранении никнеймов в файл: {e}")
