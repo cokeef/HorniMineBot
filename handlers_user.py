@@ -1270,25 +1270,48 @@ async def process_community(message: Message, state: FSMContext, bot: Bot):
         logger.error(f"Ошибка в process_community для пользователя {message.from_user.id}: {e}")
         await message.answer("❌ Произошла ошибка. Пожалуйста, попробуйте позже.")
 
-@user_router.callback_query(F.data.startswith("platform_"))
-async def process_platform(callback: CallbackQuery, state: FSMContext):
-    platform = callback.data.split("_")[1]
-    await state.update_data(platform=platform)
-    
-    if platform in ["java", "both"]:
-        await callback.message.answer(
-            "7. Введите свой никнейм Java (Без пробелов и лишних символов):",
+@user_router.callback_query(F.data.startswith("platform_"), StateFilter(ApplicationFormStates.waiting_for_platform))
+async def process_platform_choice(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    try:
+        # Удаляем предыдущее сообщение
+        data = await state.get_data()
+        if last_message_id := data.get('last_message_id'):
+            await delete_messages(bot, callback.from_user.id, [last_message_id])
+        await callback.message.delete()
+        
+        # Получаем выбранную платформу из callback_data
+        platform = callback.data.split("_")[1]  # platform_java -> java
+        application_id = data.get('application_id')
+        
+        # Сохраняем платформу в базе данных
+        if application_id:
+            await update_application_field(application_id, "player_platform", platform)
+        
+        # Сохраняем платформу в состоянии для дальнейшего использования
+        await state.update_data(platform=platform)
+        
+        # В зависимости от платформы переходим к разным вопросам
+        if platform in ["java", "both"]:
+            # Если выбрал Java или обе платформы - спрашиваем Java никнейм
+            await state.set_state(ApplicationFormStates.waiting_for_java_nickname)
+            question = "⚡ Введите свой никнейм Java\n(Без пробелов и лишних символов):"
+        else:
+            # Если выбрал только Bedrock - сразу спрашиваем Bedrock никнейм
+            await state.set_state(ApplicationFormStates.waiting_for_bedrock_nickname)
+            question = "🟢 Введите свой никнейм Bedrock\n(Без пробелов и лишних символов):"
+        
+        new_message = await callback.message.answer(
+            question,
             reply_markup=get_back_button_keyboard()
         )
-        await state.set_state(ApplicationStates.waiting_for_java_nickname)
-    else:
-        await callback.message.answer(
-            "8. Введите свой никнейм Bedrock (Без пробелов и лишних символов):",
-            reply_markup=get_back_button_keyboard()
-        )
-        await state.set_state(ApplicationStates.waiting_for_bedrock_nickname)
-    
-    await callback.answer()
+        await state.update_data(last_message_id=new_message.message_id)
+        
+        await callback.answer()
+        
+    except Exception as e:
+        logger.error(f"Ошибка в process_platform_choice для пользователя {callback.from_user.id}: {e}")
+        await callback.message.answer("❌ Произошла ошибка. Пожалуйста, попробуйте позже.")
+        await callback.answer()
 
 @user_router.message(ApplicationStates.waiting_for_java_nickname)
 async def process_java_nickname(message: Message, state: FSMContext):
