@@ -1232,17 +1232,43 @@ async def process_plans(message: Message, state: FSMContext, bot: Bot):
         logger.error(f"Ошибка в process_plans для пользователя {message.from_user.id}: {e}")
         await message.answer("❌ Произошла ошибка. Пожалуйста, попробуйте позже.")
 
-@user_router.message(ApplicationStates.waiting_for_community)
-async def process_community(message: Message, state: FSMContext):
-    await state.update_data(community=message.text)
-    await message.answer(
-        "6. Выберите платформу:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Java", callback_data="platform_java")],
-            [InlineKeyboardButton(text="Bedrock", callback_data="platform_bedrock")],
-            [InlineKeyboardButton(text="Оба", callback_data="platform_both")]
-        ])
-    )
+@user_router.message(StateFilter(ApplicationFormStates.waiting_for_community), F.text)
+async def process_community(message: Message, state: FSMContext, bot: Bot):
+    try:
+        # Удаляем предыдущие сообщения
+        data = await state.get_data()
+        if last_message_id := data.get('last_message_id'):
+            await delete_messages(bot, message.from_user.id, [last_message_id])
+        
+        # Сохраняем ответ о сообществе
+        community_text = message.text.strip()
+        application_id = data.get('application_id')
+        
+        # Сохраняем в базе данных
+        if application_id:
+            await update_application_field(application_id, "player_community", community_text)
+        
+        # Переходим к выбору платформы (вопрос 6)
+        await state.set_state(ApplicationFormStates.waiting_for_platform)
+        
+        # Вопрос 6 - выбор платформы с кнопками!
+        question = "🎮 На какой платформе вы играете?"
+        
+        # Импортируем клавиатуру для выбора платформы
+        from keyboards import get_platform_choice_keyboard
+        
+        new_message = await message.answer(
+            question,
+            reply_markup=get_platform_choice_keyboard()
+        )
+        await state.update_data(last_message_id=new_message.message_id)
+        
+        # Удаляем сообщение пользователя для чистоты чата
+        await safe_message_delete(message)
+        
+    except Exception as e:
+        logger.error(f"Ошибка в process_community для пользователя {message.from_user.id}: {e}")
+        await message.answer("❌ Произошла ошибка. Пожалуйста, попробуйте позже.")
 
 @user_router.callback_query(F.data.startswith("platform_"))
 async def process_platform(callback: CallbackQuery, state: FSMContext):
