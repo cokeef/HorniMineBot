@@ -1162,23 +1162,75 @@ async def process_age(message: Message, state: FSMContext):
     )
     await state.set_state(ApplicationStates.waiting_for_about)
 
-@user_router.message(ApplicationStates.waiting_for_about)
-async def process_about(message: Message, state: FSMContext):
-    await state.update_data(about=message.text)
-    await message.answer(
-        "4. Планы на сервере:",
-        reply_markup=get_back_button_keyboard()
-    )
-    await state.set_state(ApplicationStates.waiting_for_plans)
+@user_router.message(StateFilter(ApplicationFormStates.waiting_for_about), F.text)
+async def process_about(message: Message, state: FSMContext, bot: Bot):
+    try:
+        # Удаляем предыдущие сообщения
+        data = await state.get_data()
+        if last_message_id := data.get('last_message_id'):
+            await delete_messages(bot, message.from_user.id, [last_message_id])
+        
+        # Сохраняем текст 'О себе'
+        about_text = message.text.strip()
+        application_id = data.get('application_id')
+        
+        # Сохраняем в базе данных
+        if application_id:
+            await update_application_field(application_id, "player_about", about_text)
+        
+        # Переходим к следующему шагу - планы на сервере (вопрос 4)
+        await state.set_state(ApplicationFormStates.waiting_for_plans)
+        
+        # Загружаем вопрос из файла questions.md
+        question = "🎮 Как вы планируете проводить время на HorniMine?\n(Игровой стиль, предпочтения: строительство, приключения, торговля и т.д.)"
+        
+        new_message = await message.answer(
+            question,
+            reply_markup=get_back_button_keyboard()
+        )
+        await state.update_data(last_message_id=new_message.message_id)
+        
+        # Удаляем сообщение пользователя для чистоты чата
+        await safe_message_delete(message)
+        
+    except Exception as e:
+        logger.error(f"Ошибка в process_about для пользователя {message.from_user.id}: {e}")
+        await message.answer("❌ Произошла ошибка. Пожалуйста, попробуйте позже.")
 
-@user_router.message(ApplicationStates.waiting_for_plans)
-async def process_plans(message: Message, state: FSMContext):
-    await state.update_data(plans=message.text)
-    await message.answer(
-        "5. Что важно в сообществе:",
-        reply_markup=get_back_button_keyboard()
-    )
-    await state.set_state(ApplicationStates.waiting_for_community)
+@user_router.message(StateFilter(ApplicationFormStates.waiting_for_plans), F.text)
+async def process_plans(message: Message, state: FSMContext, bot: Bot):
+    try:
+        # Удаляем предыдущие сообщения
+        data = await state.get_data()
+        if last_message_id := data.get('last_message_id'):
+            await delete_messages(bot, message.from_user.id, [last_message_id])
+        
+        # Сохраняем планы на сервере
+        plans_text = message.text.strip()
+        application_id = data.get('application_id')
+        
+        # Сохраняем в базе данных
+        if application_id:
+            await update_application_field(application_id, "player_plans", plans_text)
+        
+        # Переходим к следующему шагу - вопрос о сообществе (вопрос 5)
+        await state.set_state(ApplicationFormStates.waiting_for_community)
+        
+        # Вопрос 5 из questions.md
+        question = "💙 Что для вас важно в дружелюбном сообществе?\n(Честность, уважение, поддержка, свобода самовыражения и т.п.)"
+        
+        new_message = await message.answer(
+            question,
+            reply_markup=get_back_button_keyboard()
+        )
+        await state.update_data(last_message_id=new_message.message_id)
+        
+        # Удаляем сообщение пользователя для чистоты чата
+        await safe_message_delete(message)
+        
+    except Exception as e:
+        logger.error(f"Ошибка в process_plans для пользователя {message.from_user.id}: {e}")
+        await message.answer("❌ Произошла ошибка. Пожалуйста, попробуйте позже.")
 
 @user_router.message(ApplicationStates.waiting_for_community)
 async def process_community(message: Message, state: FSMContext):
