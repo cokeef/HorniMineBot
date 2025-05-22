@@ -370,7 +370,7 @@ async def keep_description(callback: CallbackQuery, state: FSMContext, bot: Bot)
         await callback.message.answer("❌ Произошла ошибка при редактировании заявки.")
     await callback.answer()
 
-@user_router.message(StateFilter(ApplicationStates.waiting_for_about), F.text)
+@user_router.message(StateFilter(ApplicationFormStates.waiting_for_about), F.text)
 async def process_about(message: Message, state: FSMContext, bot: Bot):
     try:
         # Удаляем предыдущие сообщения
@@ -383,34 +383,24 @@ async def process_about(message: Message, state: FSMContext, bot: Bot):
         application_id = data.get('application_id')
         
         # Сохраняем в базе данных
-        await update_application_field(application_id, "player_about", about_text)
+        if application_id:
+            await update_application_field(application_id, "player_about", about_text)
         
-        # Переходим к следующему шагу - планы на сервере
-        await state.set_state(ApplicationStates.waiting_for_plans)
+        # Переходим к следующему шагу - планы на сервере (вопрос 4)
+        await state.set_state(ApplicationFormStates.waiting_for_plans)
         
         # Загружаем вопрос из файла questions.md
-        question = "Как вы планируете проводить время на HorniMine?"
-        try:
-            with open('questions.md', 'r', encoding='utf-8') as file:
-                content = file.read().split('---')[1].strip()
-                lines = content.split('\n')
-                for i, line in enumerate(lines):
-                    if "Как вы планируете проводить время" in line:
-                        question = line.strip()
-                        if i+1 < len(lines) and lines[i+1].strip():
-                            question += " " + lines[i+1].strip()
-                        break
-        except Exception as e:
-            logger.error(f"Ошибка при чтении вопроса: {e}")
+        question = "🎮 Как вы планируете проводить время на HorniMine?\n(Игровой стиль, предпочтения: строительство, приключения, торговля и т.д.)"
         
-        message = await message.answer(
+        new_message = await message.answer(
             question,
             reply_markup=get_back_button_keyboard()
         )
-        await state.update_data(last_message_id=message.message_id)
+        await state.update_data(last_message_id=new_message.message_id)
         
         # Удаляем сообщение пользователя для чистоты чата
         await safe_message_delete(message)
+        
     except Exception as e:
         logger.error(f"Ошибка в process_about для пользователя {message.from_user.id}: {e}")
         await message.answer("❌ Произошла ошибка. Пожалуйста, попробуйте позже.")
